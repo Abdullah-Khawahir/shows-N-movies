@@ -1,4 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router"
+import { useQuery } from "@tanstack/react-query"
+import { createFileRoute, Link } from "@tanstack/react-router"
 import { TMDBTvExternalIds, TMDBTvSeasonsDetailsResponse } from "../../../../../types"
 import { eztvxDownlodsFetch, tmdbFetch, tmdbImageURL } from "../../../../../utils"
 import { formatSize } from "../../../../../utils/tools"
@@ -6,58 +7,93 @@ import { formatSize } from "../../../../../utils/tools"
 export const Route = createFileRoute('/tv/$tvId/season/$seasonNumber/')({
     preload: true,
     loader: async ({ params }) => {
-
         const infoData = await tmdbFetch<TMDBTvSeasonsDetailsResponse>
             (`/3/tv/${params.tvId}/season/${params.seasonNumber}?language=en-US`)
-
-        const imdbId = await tmdbFetch<TMDBTvExternalIds>(`3/tv/${params.tvId}/external_ids`)
-
-        const downloadData = await eztvxDownlodsFetch(imdbId.imdb_id)
-        return { downloadData, infoData };
+        console.log(infoData)
+        return { infoData };
     },
     component: TvSeason,
-
 })
 function TvSeason() {
-    const { downloadData, infoData } = Route.useLoaderData()
+    const { infoData } = Route.useLoaderData()
+    const { tvId } = Route.useParams()
+    const { data: tvIds } = useTVSeasonIds(tvId)
+    const { data: downloadData } = useDownloads(tvIds?.imdb_id || '')
 
     return (
         <>
             <img src={tmdbImageURL(infoData.poster_path)} />
-            <div>
-                epsionds:
+            <div className="">
                 {infoData.episodes
                     .sort((a, b) => b.episode_number - a.episode_number)
                     .map(e => (
                         <div key={e.id}>
-                            <div> {e.episode_number} </div>
+                            <div>  </div>
                             <div>
-                                <div>
-                                    {e.name}
+                                <div className="flex">
+                                    <table className="w-full">
+                                        <thead className="text-center">
+                                            <tr>
+                                                <td>
+                                                    {e.episode_number} | {e.name} | {e.air_date}
+                                                </td>
+                                                <td> Quality</td>
+                                                <td> Seeds</td>
+                                                <td> Size</td>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {
+                                                downloadData && downloadData.torrents
+                                                    .filter(d => d.episode.toString() == e.episode_number.toString() &&
+                                                        d.season.toString() == e.season_number.toString())
+                                                    .sort((a, b) => +b.size_bytes - +a.size_bytes)
+                                                    .map(download => (
+                                                        <tr key={download.hash}>
+                                                            <td>   {download.title}</td>
+                                                            <td>   {downloadTitleToDetails(download.title).quality}</td>
+                                                            <td>   {download.seeds}</td>
+                                                            <td>
+                                                                <Link className="visited:text-shadow-amber-950" to={download.magnet_url}>
+                                                                    {formatSize(+download.size_bytes)}
+                                                                </Link>
+                                                            </td>
+                                                        </tr>
+                                                    ))
+                                                || 'loading ...'
+                                            }
+
+                                        </tbody>
+                                    </table>
                                 </div>
-                                <div>
-                                    {e.air_date}
-                                </div>
-                                {downloadData.torrents
-                                    .filter(d => d.episode.toString() == e.episode_number.toString() &&
-                                        d.season.toString() == e.season_number.toString())
-                                    .sort((a, b) => +b.size_bytes - +a.size_bytes)
-                                    .map(download => (
-                                        <div key={download.hash}>
-                                            <a href={download.magnet_url}>
-                                                {downloadTitleToDetails(download.title).quality}
-                                                <span> {formatSize(+download.size_bytes)}</span>
-                                            </a>
-                                            <span>
-                                                <span> seeds:{download.seeds} </span>
-                                            </span>
-                                        </div>
-                                    ))}
                             </div>
                         </div >
                     ))}
             </div>
         </>)
+}
+
+function useTVSeasonIds(tvId: string) {
+    return useQuery({
+        queryKey: [useTVSeasonIds.name, tvId],
+        queryFn: async () => {
+            if (!tvId) throw new Error('tvId is not defined or empty');
+
+            const imdbId = await tmdbFetch<TMDBTvExternalIds>(`3/tv/${tvId}/external_ids`)
+            return imdbId
+        }
+    })
+}
+
+
+function useDownloads(imdbId: string) {
+    return useQuery({
+        queryKey: [useDownloads.name, imdbId],
+        queryFn: async () => {
+            const downloadData = await eztvxDownlodsFetch(imdbId)
+            return downloadData
+        }
+    })
 }
 
 function downloadTitleToDetails(title: string) {

@@ -21,7 +21,7 @@ export async function tmdbFetch<R>(pathname: string): Promise<R> {
     const response = await fetch(url.toString(), options);
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Failed to fetch data: ${response.status} ${response.statusText} - ${errorText}`);
+      throw new Error(`Failed to fetch data: ${pathname} ${response.status} ${response.statusText} - ${errorText}`);
     }
     const json = await response.json() as R;
     console.log(`Data fetched successfully from ${url.toString()}`);
